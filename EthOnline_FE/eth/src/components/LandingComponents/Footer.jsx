@@ -2,6 +2,7 @@
 import { motion } from 'framer-motion';
 import orbixLogo from "../../../public/OrbixLogo.jpg";
 
+
 const Footer = () => {
   const footerSections = [
     {
