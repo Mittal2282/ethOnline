@@ -1,0 +1,15 @@
+// Blockchain Configuration
+// Update these values with your actual RPC URLs
+
+export const BLOCKCHAIN_CONFIG = {
+  // Private key for signing transactions
+  PRIVATE_KEY: "0x4caa64a8a260e9f6298ed500313ba620c5e9a8bf34de0f9c64482198bce283db",
+  
+  // RPC URLs
+  RPC_URL: "https://eth-sepolia.g.alchemy.com/v2/oIYpahzrgNt5HRj3VtqwTwdYsJyc9ymZ", // Replace with your actual Ethereum RPC URL
+  HEDERA_RPC_URL: "https://compatible-omniscient-theorem.hedera-testnet.quiknode.pro/b0b1b5cd783d39fc86da9afa59631f74310a98c0", // Replace with your actual Hedera RPC URL
+  
+  // Network IDs
+  ETHEREUM_CHAIN_ID: 11155111, // Sepolia testnet
+  HEDERA_CHAIN_ID: 296, // Hedera testnet
+};

@@ -13,6 +13,8 @@ const DEFAULT_PLAYGROUND = {
 export const PlaygroundProvider = ({ children }) => {
   const [playgrounds, setPlaygrounds] = useState([DEFAULT_PLAYGROUND]);
   const [activePlaygroundId, setActivePlaygroundId] = useState('playground-1');
+  const [ethOappAddress, setEthOappAddress] = useState(null);
+  const [hederaOappAddress, setHederaOappAddress] = useState(null);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -24,23 +26,37 @@ export const PlaygroundProvider = ({ children }) => {
           setPlaygrounds(parsedData.playgrounds);
           setActivePlaygroundId(parsedData.activePlaygroundId || parsedData.playgrounds[0].id);
         }
+        // Load deployment addresses
+        console.log('Loading deployment addresses from localStorage:', {
+          eth: parsedData.ethOappAddress,
+          hedera: parsedData.hederaOappAddress
+        });
+        if (parsedData.ethOappAddress) {
+          setEthOappAddress(parsedData.ethOappAddress);
+        }
+        if (parsedData.hederaOappAddress) {
+          setHederaOappAddress(parsedData.hederaOappAddress);
+        }
       }
     } catch (error) {
       console.error('Error loading playgrounds from localStorage:', error);
     }
   }, []);
 
-  // Save to localStorage whenever playgrounds or activePlaygroundId changes
+  // Save to localStorage whenever playgrounds, activePlaygroundId, or deployment addresses change
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      const dataToSave = {
         playgrounds,
-        activePlaygroundId
-      }));
+        activePlaygroundId,
+        ethOappAddress,
+        hederaOappAddress
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
     } catch (error) {
       console.error('Error saving playgrounds to localStorage:', error);
     }
-  }, [playgrounds, activePlaygroundId]);
+  }, [playgrounds, activePlaygroundId, ethOappAddress, hederaOappAddress]);
 
   const activePlayground = playgrounds.find(p => p.id === activePlaygroundId);
 
@@ -108,6 +124,11 @@ export const PlaygroundProvider = ({ children }) => {
     }
   }, [connectAllNodesFn]);
 
+  const setDeploymentAddresses = useCallback((ethAddress, hederaAddress) => {
+    setEthOappAddress(ethAddress);
+    setHederaOappAddress(hederaAddress);
+  }, []);
+
   const value = {
     playgrounds,
     activePlayground,
@@ -120,7 +141,10 @@ export const PlaygroundProvider = ({ children }) => {
     renamePlayground,
     clearActivePlayground,
     connectAllNodes,
-    setConnectAllNodesFn
+    setConnectAllNodesFn,
+    ethOappAddress,
+    hederaOappAddress,
+    setDeploymentAddresses
   };
 
   return (

@@ -10,10 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@hashgraph/sdk": "^2.75.0",
+    "@pythnetwork/hermes-client": "^2.0.0",
     "@tailwindcss/vite": "^4.1.14",
     "@wagmi/connectors": "^6.0.0",
     "ethers": "^6.15.0",
     "framer-motion": "^12.23.24",
+    "hashconnect": "^3.0.14",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.4",

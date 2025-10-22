@@ -76,8 +76,14 @@ const CustomEdge = ({ sourceX, sourceY, targetX, targetY, sourcePosition, target
 
   // Function to create arrow markers along the path
   const createArrowMarkers = () => {
+    // Only show animated arrows for non-conditional edges
+    if (data?.type?.includes('conditional')) {
+      return null;
+    }
+    
     const arrowCount = 3; // Fixed number of arrows for better animation
     const arrows = [];
+    const arrowColor = style.stroke || '#1E40AF';
 
     for (let i = 0; i < arrowCount; i++) {
       // Calculate animated position along the path
@@ -92,16 +98,10 @@ const CustomEdge = ({ sourceX, sourceY, targetX, targetY, sourcePosition, target
       
       arrows.push(
         <g key={i} transform={`translate(${x}, ${y}) rotate(${angle})`}>
-          <defs>
-            <linearGradient id={`arrowGradient-${i}`} x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor={style.stroke || '#3B82F6'} stopOpacity="0.8"/>
-              <stop offset="100%" stopColor={style.stroke || '#1E40AF'} stopOpacity="1"/>
-            </linearGradient>
-          </defs>
           <path
             d="M0,0 L-12,-6 L-8,0 L-12,6 Z"
-            fill={`url(#arrowGradient-${i})`}
-            stroke={style.stroke || '#1E40AF'}
+            fill={arrowColor}
+            stroke={arrowColor}
             strokeWidth="0.5"
             filter="drop-shadow(0 1px 2px rgba(0,0,0,0.1))"
           />
@@ -161,33 +161,79 @@ const CustomEdge = ({ sourceX, sourceY, targetX, targetY, sourcePosition, target
       />
 
       <EdgeLabelRenderer>
-        {showDelete && data?.onDelete && (
-          <div
-            style={{
-              position: 'absolute',
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-              pointerEvents: 'all',
-              zIndex: 1000,
-            }}
-            className="nodrag nopan"
-            onMouseEnter={show}
-            onMouseLeave={hideWithDelay}
-          >
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                data.onDelete();
-                setShowDelete(false);
-              }}
-              className="w-4 h-4 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-lg transition-colors duration-200"
-              title="Delete connection"
-            >
-              <svg className="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+        <div
+          style={{
+            position: 'absolute',
+            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            pointerEvents: 'all',
+            zIndex: 1000,
+          }}
+          className="nodrag nopan"
+          onMouseEnter={show}
+          onMouseLeave={hideWithDelay}
+        >
+          {/* Condition badge and actions */}
+          <div className="flex items-center gap-1 justify-center">
+            {data?.type === 'conditional-true' && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (typeof data?.onShowCondition === 'function') {
+                    data.onShowCondition();
+                  }
+                }}
+                className="px-2 py-0.5 rounded text-[10px] font-medium border bg-green-50 text-green-700 border-green-200 hover:bg-green-100 transition-colors"
+                title="View condition details"
+              >
+                ✓ True
+              </button>
+            )}
+            {data?.type === 'conditional-false' && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (typeof data?.onShowCondition === 'function') {
+                    data.onShowCondition();
+                  }
+                }}
+                className="px-2 py-0.5 rounded text-[10px] font-medium border bg-red-50 text-red-700 border-red-200 hover:bg-red-100 transition-colors"
+                title="View condition details"
+              >
+                ✗ False
+              </button>
+            )}
+            {data?.type === 'conditional' && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (typeof data?.onShowCondition === 'function') {
+                    data.onShowCondition();
+                  }
+                }}
+                className="px-2 py-0.5 rounded text-[10px] font-medium border bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 transition-colors"
+                title="View condition details"
+              >
+                Condition
+              </button>
+            )}
+
+            {showDelete && data?.onDelete && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  data.onDelete();
+                  setShowDelete(false);
+                }}
+                className="w-4 h-4 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-lg transition-colors duration-200"
+                title="Delete connection"
+              >
+                <svg className="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
-        )}
+        </div>
       </EdgeLabelRenderer>
     </>
   );
