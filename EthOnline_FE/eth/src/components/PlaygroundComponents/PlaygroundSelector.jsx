@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { usePlayground } from '../../hooks/usePlayground';
 import { motion, AnimatePresence } from 'framer-motion'; // eslint-disable-line no-unused-vars
 import { useAccount, useWriteContract, useSwitchChain } from 'wagmi';
+import { ethers } from 'ethers';
+import contractABI from '../../data/abi.json';
 import { contractService } from '../../services/contractService';
 import { blockchainService } from '../../services/blockchainService';
 import { workflowAPIService } from '../../services/workflowAPIService';
@@ -47,10 +49,16 @@ const PlaygroundSelector = () => {
   const [isFundingOpen, setIsFundingOpen] = useState(false);
   const [ethAmount, setEthAmount] = useState('');
   const [hederaAmount, setHederaAmount] = useState('');
+  const [ethBridgeAmount, setEthBridgeAmount] = useState('');
+  const [hederaBridgeAmount, setHederaBridgeAmount] = useState('');
   const [isProcessingEth, setIsProcessingEth] = useState(false);
   const [isProcessingHedera, setIsProcessingHedera] = useState(false);
+  const [isProcessingEthBridge, setIsProcessingEthBridge] = useState(false);
+  const [isProcessingHederaBridge, setIsProcessingHederaBridge] = useState(false);
   const [ethError, setEthError] = useState('');
   const [hederaError, setHederaError] = useState('');
+  const [ethBridgeError, setEthBridgeError] = useState('');
+  const [hederaBridgeError, setHederaBridgeError] = useState('');
   
   // Workflow execution states
   const [isExecutingWorkflow, setIsExecutingWorkflow] = useState(false);
@@ -242,13 +250,95 @@ const PlaygroundSelector = () => {
     }
   };
 
+  // Bridge funding handlers
+  const handleEthBridgeFunding = async () => {
+    if (!ethBridgeAmount || !ethOappAddress || !isConnected) {
+      setEthBridgeError('Please enter a valid amount and ensure wallet is connected');
+      return;
+    }
+
+    setIsProcessingEthBridge(true);
+    setEthBridgeError('');
+
+    try {
+      // Switch to Sepolia if not already on it
+      const sepoliaChainId = 11155111; // Sepolia chain ID
+      if (chainId !== sepoliaChainId) {
+        await switchChain({ chainId: sepoliaChainId });
+      }
+
+      const contractConfig = {
+        address: ethOappAddress,
+        abi: contractABI,
+        functionName: 'depositProtocolFunds',
+        value: ethers.parseEther(ethBridgeAmount),
+        gasLimit: 100000
+      };
+      
+      await writeEthContract(contractConfig);
+      
+      // Success - clear the input
+      setEthBridgeAmount('');
+      alert('ETH bridge funds deposited successfully!');
+    } catch (error) {
+      console.error('ETH bridge deposit error:', error);
+      setEthBridgeError(error.message || 'Failed to deposit ETH bridge funds');
+    } finally {
+      setIsProcessingEthBridge(false);
+    }
+  };
+
+  const handleHederaBridgeFunding = async () => {
+    if (!hederaBridgeAmount || !hederaOappAddress) {
+      setHederaBridgeError('Please enter a valid amount');
+      return;
+    }
+
+    setIsProcessingHederaBridge(true);
+    setHederaBridgeError('');
+
+    try {
+      // Switch to Hedera testnet if not already on it
+      const hederaChainId = 296; // Hedera testnet chain ID
+      if (chainId !== hederaChainId) {
+        await switchChain({ chainId: hederaChainId });
+      }
+
+      // Get Hedera contract config
+      const contractConfig = {
+        address: hederaOappAddress,
+        abi: contractABI,
+        functionName: 'depositProtocolFunds',
+        value: ethers.parseEther(hederaBridgeAmount),
+        gasLimit: 100000
+      };
+      
+      await writeHederaContract(contractConfig);
+      
+      // Success - clear the input
+      setHederaBridgeAmount('');
+      alert('HBAR bridge funds deposited successfully!');
+    } catch (error) {
+      console.error('Hedera bridge deposit error:', error);
+      setHederaBridgeError(error.message || 'Failed to deposit HBAR bridge funds');
+    } finally {
+      setIsProcessingHederaBridge(false);
+    }
+  };
+
   const resetFundingForm = () => {
     setEthAmount('');
     setHederaAmount('');
+    setEthBridgeAmount('');
+    setHederaBridgeAmount('');
     setEthError('');
     setHederaError('');
+    setEthBridgeError('');
+    setHederaBridgeError('');
     setIsProcessingEth(false);
     setIsProcessingHedera(false);
+    setIsProcessingEthBridge(false);
+    setIsProcessingHederaBridge(false);
   };
 
   // Workflow execution handler
@@ -935,6 +1025,118 @@ const PlaygroundSelector = () => {
                 <p className="text-xs text-blue-600">
                   ℹ️ Wallet will prompt to switch to Hedera Testnet for this transaction
                 </p>
+              </div>
+
+              {/* Bridge Funding Section */}
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                <h4 className="text-base font-medium text-gray-900 mb-4">Bridge Deposits</h4>
+                
+                {/* ETH Bridge Funding */}
+                <div className="space-y-2 mb-4">
+                  <label className="block text-sm font-medium text-gray-700">
+                    ETH Bridge Deposit
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        value={ethBridgeAmount}
+                        onChange={(e) => {
+                          setEthBridgeAmount(e.target.value);
+                          setEthBridgeError('');
+                        }}
+                        placeholder="0.0"
+                        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm ${
+                          ethBridgeError ? 'border-red-300' : 'border-gray-300'
+                        }`}
+                        disabled={isProcessingEthBridge}
+                      />
+                      {ethBridgeError && (
+                        <p className="text-xs text-red-600 mt-1">{ethBridgeError}</p>
+                      )}
+                    </div>
+                    <motion.button
+                      onClick={handleEthBridgeFunding}
+                      disabled={!ethBridgeAmount || isProcessingEthBridge}
+                      className={
+                        !ethBridgeAmount || isProcessingEthBridge
+                          ? buttonStyles.disabled
+                          : buttonStyles.primary
+                      }
+                      {...motionProps}
+                    >
+                      {isProcessingEthBridge ? (
+                        <div className="flex items-center gap-2">
+                          <motion.div
+                            className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          />
+                          Bridging...
+                        </div>
+                      ) : (
+                        'Bridge ETH'
+                      )}
+                    </motion.button>
+                  </div>
+                </div>
+
+                {/* Hedera Bridge Funding */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    HBAR Bridge Deposit
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        value={hederaBridgeAmount}
+                        onChange={(e) => {
+                          setHederaBridgeAmount(e.target.value);
+                          setHederaBridgeError('');
+                        }}
+                        placeholder="0.0"
+                        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm ${
+                          hederaBridgeError ? 'border-red-300' : 'border-gray-300'
+                        }`}
+                        disabled={isProcessingHederaBridge}
+                      />
+                      {hederaBridgeError && (
+                        <p className="text-xs text-red-600 mt-1">{hederaBridgeError}</p>
+                      )}
+                    </div>
+                    <motion.button
+                      onClick={handleHederaBridgeFunding}
+                      disabled={!hederaBridgeAmount || isProcessingHederaBridge}
+                      className={
+                        !hederaBridgeAmount || isProcessingHederaBridge
+                          ? buttonStyles.disabled
+                          : buttonStyles.primary
+                      }
+                      {...motionProps}
+                    >
+                      {isProcessingHederaBridge ? (
+                        <div className="flex items-center gap-2">
+                          <motion.div
+                            className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          />
+                          Bridging...
+                        </div>
+                      ) : (
+                        'Bridge HBAR'
+                      )}
+                    </motion.button>
+                  </div>
+                  <p className="text-xs text-blue-600">
+                    ℹ️ Wallet will prompt to switch networks for bridge transactions
+                  </p>
+                </div>
               </div>
             </div>
 
