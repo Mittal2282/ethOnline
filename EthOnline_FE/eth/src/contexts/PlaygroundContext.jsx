@@ -15,6 +15,7 @@ export const PlaygroundProvider = ({ children }) => {
   const [activePlaygroundId, setActivePlaygroundId] = useState('playground-1');
   const [ethOappAddress, setEthOappAddress] = useState(null);
   const [hederaOappAddress, setHederaOappAddress] = useState(null);
+  const [nodeExecutionStates, setNodeExecutionStates] = useState({});
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -129,6 +130,22 @@ export const PlaygroundProvider = ({ children }) => {
     setHederaOappAddress(hederaAddress);
   }, []);
 
+  // Node execution state management
+  const updateNodeExecutionState = useCallback((nodeId, state) => {
+    setNodeExecutionStates(prev => ({
+      ...prev,
+      [nodeId]: state
+    }));
+  }, []);
+
+  const clearNodeExecutionStates = useCallback(() => {
+    setNodeExecutionStates({});
+  }, []);
+
+  const getNodeExecutionState = useCallback((nodeId) => {
+    return nodeExecutionStates[nodeId] || 'idle';
+  }, [nodeExecutionStates]);
+
   const value = {
     playgrounds,
     activePlayground,
@@ -144,7 +161,11 @@ export const PlaygroundProvider = ({ children }) => {
     setConnectAllNodesFn,
     ethOappAddress,
     hederaOappAddress,
-    setDeploymentAddresses
+    setDeploymentAddresses,
+    nodeExecutionStates,
+    updateNodeExecutionState,
+    clearNodeExecutionStates,
+    getNodeExecutionState
   };
 
   return (

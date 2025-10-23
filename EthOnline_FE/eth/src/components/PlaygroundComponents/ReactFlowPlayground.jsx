@@ -28,7 +28,7 @@ const edgeTypes = {
 };
 
 const ReactFlowPlayground = () => {
-  const { activePlayground, updateActivePlayground, setConnectAllNodesFn } = usePlayground();
+  const { activePlayground, updateActivePlayground, setConnectAllNodesFn, getNodeExecutionState, nodeExecutionStates } = usePlayground();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [reactFlowInstance, setReactFlowInstance] = useState(null);
@@ -55,6 +55,24 @@ const ReactFlowPlayground = () => {
       return () => clearTimeout(timeoutId);
     }
   }, [nodes, edges, isInitialized, activePlayground, updateActivePlayground]);
+
+  // Update nodes with execution state from context
+  useEffect(() => {
+    if (isInitialized && nodes.length > 0) {
+      console.log('Updating nodes with execution states:', nodeExecutionStates);
+      setNodes((nds) => nds.map((node) => {
+        const executionState = getNodeExecutionState(node.id);
+        console.log(`Node ${node.id} execution state:`, executionState);
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            executionState: executionState
+          }
+        };
+      }));
+    }
+  }, [isInitialized, nodes.length, nodeExecutionStates, setNodes, getNodeExecutionState]);
 
 
   const deleteEdge = useCallback((edgeId) => {

@@ -1,16 +1,15 @@
 import { Handle, Position } from 'reactflow';
-import { motion } from 'framer-motion';
 import { useState } from 'react';
-import { blockchainService } from '../../services/blockchainService';
-import { usePlayground } from '../../hooks/usePlayground';
 
 const EntityNode = ({ data, isConnectable }) => {
-  const { ethOappAddress, hederaOappAddress } = usePlayground();
   const [isEth, setIsEth] = useState(data?.isEth ?? true);
   const [value, setValue] = useState(data?.value ?? '');
   const [walletAddress, setWalletAddress] = useState(data?.walletAddress ?? '');
-  const [isSigning, setIsSigning] = useState(false);
-  const [signingResult, setSigningResult] = useState(null);
+
+  const executionState = data?.executionState || 'idle';
+  
+  // Debug logging
+  console.log(`EntityNode ${data?.id} execution state:`, executionState);
 
   const handleToggle = () => {
     const newIsEth = !isEth;
@@ -37,67 +36,24 @@ const EntityNode = ({ data, isConnectable }) => {
     }
   };
 
-  const handleSignTransaction = async () => {
-    if (!value || !walletAddress) {
-      alert('Please fill in both amount and wallet address');
-      return;
-    }
 
-    // Check if contract addresses are available
-    const contractAddress = isEth ? ethOappAddress : hederaOappAddress;
-    if (!contractAddress) {
-      const network = isEth ? 'Ethereum' : 'Hedera';
-      alert(`${network} contract address not available. Please deploy contracts first.`);
-      return;
-    }
-
-    setIsSigning(true);
-    setSigningResult(null);
-
-    try {
-      // Update blockchain service with current contract addresses
-      blockchainService.updateContractAddresses(ethOappAddress, hederaOappAddress);
-
-      const result = await blockchainService.createNativeRule({
-        isEth,
-        value,
-        walletAddress
-      });
-
-      if (result.success) {
-        setSigningResult({
-          success: true,
-          ruleId: result.ruleId,
-          transactionHash: result.transactionHash,
-          blockNumber: result.blockNumber
-        });
-        alert(`✅ Transaction successful!\nRule ID: ${result.ruleId}\nTransaction Hash: ${result.transactionHash}`);
-      } else {
-        setSigningResult({
-          success: false,
-          error: result.error
-        });
-        alert(`❌ Transaction failed: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('Sign transaction error:', error);
-      setSigningResult({
-        success: false,
-        error: error.message
-      });
-      alert(`❌ Error: ${error.message}`);
-    } finally {
-      setIsSigning(false);
+  // Determine node styling based on execution state
+  const getNodeStyling = () => {
+    switch (executionState) {
+      case 'loading':
+        return 'bg-blue-50 border-blue-300 shadow-blue-100';
+      case 'completed':
+        return 'bg-green-50 border-green-300 shadow-green-100';
+      case 'error':
+        return 'bg-red-50 border-red-300 shadow-red-100';
+      default:
+        return 'bg-white border-gray-200';
     }
   };
 
   return (
-    <motion.div
-      className="group relative bg-white border border-gray-200 rounded-lg shadow-sm min-w-[280px] hover:shadow-md transition-shadow duration-200"
-      initial={{ scale: 0, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      whileHover={{ scale: 1.01 }}
-      transition={{ duration: 0.2 }}
+    <div
+      className={`group relative ${getNodeStyling()} rounded-lg shadow-sm min-w-[280px] hover:shadow-md transition-all duration-200`}
     >
       {/* Input Handle */}
       <Handle
@@ -137,6 +93,28 @@ const EntityNode = ({ data, isConnectable }) => {
               Transaction Node {data?.nodeNumber ? `#${data.nodeNumber}` : ''}
             </h3>
             <div className="flex items-center space-x-2">
+              {executionState === 'loading' && (
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-xs text-blue-600 font-medium">Processing</span>
+                </div>
+              )}
+              {executionState === 'completed' && (
+                <div className="flex items-center gap-1">
+                  <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-xs text-green-600 font-medium">Completed</span>
+                </div>
+              )}
+              {executionState === 'error' && (
+                <div className="flex items-center gap-1">
+                  <svg className="w-3 h-3 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-xs text-red-600 font-medium">Error</span>
+                </div>
+              )}
               <span className={`text-xs px-2 py-1 rounded-full ${isEth ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
                 {isEth ? 'ETH' : 'Hedera'}
               </span>
@@ -191,52 +169,6 @@ const EntityNode = ({ data, isConnectable }) => {
             />
           </div>
 
-          {/* Sign Transaction Button */}
-          <div className="pt-2">
-            <button
-              disabled={!value || !walletAddress || isSigning || !(isEth ? ethOappAddress : hederaOappAddress)}
-              className={`w-full px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                value && walletAddress && !isSigning && (isEth ? ethOappAddress : hederaOappAddress)
-                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
-              onClick={handleSignTransaction}
-              title={!(isEth ? ethOappAddress : hederaOappAddress) ? `${isEth ? 'Ethereum' : 'Hedera'} contract not deployed` : ''}
-            >
-              {isSigning ? (
-                <div className="flex items-center justify-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Signing...
-                </div>
-              ) : !(isEth ? ethOappAddress : hederaOappAddress) ? (
-                `${isEth ? 'ETH' : 'HBAR'} Contract Not Deployed`
-              ) : (
-                'Sign Transaction'
-              )}
-            </button>
-          </div>
-
-          {/* Transaction Result */}
-          {signingResult && (
-            <div className={`p-2 rounded-lg text-xs ${
-              signingResult.success 
-                ? 'bg-green-50 border border-green-200 text-green-800' 
-                : 'bg-red-50 border border-red-200 text-red-800'
-            }`}>
-              {signingResult.success ? (
-                <div>
-                  <div className="font-medium">✅ Transaction Successful</div>
-                  <div>Rule ID: {signingResult.ruleId}</div>
-                  <div className="truncate">Hash: {signingResult.transactionHash}</div>
-                </div>
-              ) : (
-                <div>
-                  <div className="font-medium">❌ Transaction Failed</div>
-                  <div>{signingResult.error}</div>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Status indicator */}
           <div className="flex items-center justify-between pt-2 border-t border-gray-100">
@@ -265,7 +197,7 @@ const EntityNode = ({ data, isConnectable }) => {
         }}
         isConnectable={isConnectable}
       />
-    </motion.div>
+    </div>
   );
 };
 

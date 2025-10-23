@@ -16,8 +16,26 @@ const PlaygroundSelector = () => {
     deletePlayground,
     renamePlayground,
     ethOappAddress,
-    hederaOappAddress
+    hederaOappAddress,
+    updateNodeExecutionState,
+    clearNodeExecutionStates
   } = usePlayground();
+
+  // Consistent button styling system - unified theme
+  const buttonStyles = {
+    primary: "flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white rounded-md font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md",
+    secondary: "flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md",
+    ghost: "px-3 py-1.5 text-gray-600 hover:text-gray-800 transition-colors duration-200 text-sm",
+    dropdown: "w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-md transition-colors duration-200 flex items-center gap-2",
+    icon: "p-1 hover:bg-gray-200 rounded-md transition-colors duration-200",
+    iconDanger: "p-1 hover:bg-red-100 rounded-md transition-colors duration-200",
+    disabled: "flex items-center gap-1.5 px-3 py-1.5 bg-gray-300 text-gray-500 cursor-not-allowed rounded-md font-medium text-sm transition-all duration-200 shadow-sm"
+  };
+
+  const motionProps = {
+    whileHover: { scale: 1.02 },
+    whileTap: { scale: 0.98 }
+  };
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -36,7 +54,6 @@ const PlaygroundSelector = () => {
   
   // Workflow execution states
   const [isExecutingWorkflow, setIsExecutingWorkflow] = useState(false);
-  const [executionProgress, setExecutionProgress] = useState({ current: 0, total: 0, step: '' });
   
   // Node creation states
   const [isNodeDropdownOpen, setIsNodeDropdownOpen] = useState(false);
@@ -234,83 +251,6 @@ const PlaygroundSelector = () => {
     setIsProcessingHedera(false);
   };
 
-  // Helper function to find the starting node (leftmost node)
-  const findStartingNode = (nodes) => {
-    return nodes.reduce((leftmost, node) => 
-      node.position.x < leftmost.position.x ? node : leftmost
-    );
-  };
-
-  // Helper function to build adjacency list from edges
-  const buildGraph = (nodes, edges) => {
-    const graph = new Map();
-    nodes.forEach(node => {
-      graph.set(node.id, { node, children: [] });
-    });
-    
-    edges.forEach(edge => {
-      const source = graph.get(edge.source);
-      if (source) {
-        source.children.push({
-          target: edge.target,
-          type: edge.data?.type || 'default'
-        });
-      }
-    });
-    
-    return graph;
-  };
-
-  // Helper function to collect all nodes in execution order (including both branches)
-  // The backend will handle the actual conditional execution
-  const collectAllExecutableNodes = (graph, startNodeId) => {
-    const executionPath = [];
-    const visited = new Set();
-    
-    const traverse = (nodeId, pathSoFar = []) => {
-      if (visited.has(nodeId)) {
-        return; // Avoid cycles
-      }
-      
-      const nodeInfo = graph.get(nodeId);
-      if (!nodeInfo) {
-        return;
-      }
-      
-      visited.add(nodeId);
-      const currentPath = [...pathSoFar, nodeId];
-      
-      // Add current node to execution path
-      executionPath.push({
-        nodeId,
-        node: nodeInfo.node,
-        path: [...currentPath]
-      });
-      
-      // For conditional nodes, we need to include both branches in the payload
-      // The backend will determine which branch to execute based on condition evaluation
-      if (nodeInfo.node.type === 'conditionalNode' || nodeInfo.node.data?.currencyMode) {
-        const trueEdge = nodeInfo.children.find(child => child.type === 'conditional-true');
-        const falseEdge = nodeInfo.children.find(child => child.type === 'conditional-false');
-        
-        if (trueEdge) {
-          traverse(trueEdge.target, currentPath);
-        }
-        if (falseEdge) {
-          traverse(falseEdge.target, currentPath);
-        }
-      } else {
-        // For regular nodes, follow the first available connection
-        if (nodeInfo.children.length > 0) {
-          traverse(nodeInfo.children[0].target, currentPath);
-        }
-      }
-    };
-    
-    traverse(startNodeId);
-    return executionPath;
-  };
-
   // Workflow execution handler
   const handleExecuteWorkflow = async () => {
     if (!activePlayground?.nodes || activePlayground.nodes.length === 0) {
@@ -324,70 +264,47 @@ const PlaygroundSelector = () => {
     }
 
     setIsExecutingWorkflow(true);
-    setExecutionProgress({ current: 0, total: 0, step: 'Analyzing workflow...' });
+    clearNodeExecutionStates(); // Clear any previous execution states
 
     try {
       // Update blockchain service with current contract addresses
       blockchainService.updateContractAddresses(ethOappAddress, hederaOappAddress);
 
-      // Build workflow graph
-      const graph = buildGraph(activePlayground.nodes, activePlayground.edges);
-      const startNode = findStartingNode(activePlayground.nodes);
-      
-      console.log('Workflow graph:', graph);
-      console.log('Starting node:', startNode);
-
-      // Collect all executable nodes (including both conditional branches)
-      const executionPath = collectAllExecutableNodes(graph, startNode.id);
-      
-      console.log('Execution path:', executionPath);
-      
-      if (executionPath.length === 0) {
-        throw new Error('No valid execution path found in workflow');
-      }
-
-      setExecutionProgress({ 
-        current: 0, 
-        total: executionPath.length, 
-        step: 'Executing workflow...' 
-      });
-
+      // Sort nodes by position to get execution order
+      const sortedNodes = [...activePlayground.nodes].sort((a, b) => a.position.x - b.position.x);
       const rules = [];
-      const nodeToRuleId = new Map(); // Map node IDs to their rule IDs
 
-      // Execute nodes in the traversal order
-      for (let i = 0; i < executionPath.length; i++) {
-        const pathItem = executionPath[i];
-        const node = pathItem.node;
+      // Sign each transaction/condition sequentially
+      for (let i = 0; i < sortedNodes.length; i++) {
+        const node = sortedNodes[i];
         const nodeData = node.data;
         
-        console.log(`Processing node ${i + 1}/${executionPath.length}:`, {
-          nodeId: node.id,
-          type: node.type,
-          data: nodeData
-        });
+        // Set node to loading state
+        updateNodeExecutionState(node.id, 'loading');
         
-        setExecutionProgress({ 
-          current: i + 1, 
-          total: executionPath.length, 
-          step: `Executing ${node.type === 'conditionalNode' ? 'Conditional' : 'Transaction'} Node ${i + 1}...` 
+        // Debug logging
+        console.log(`Processing node ${i + 1}:`, {
+          type: node.type,
+          id: node.id,
+          data: nodeData
         });
         
         let result;
         if (node.type === 'conditionalNode' || nodeData.currencyMode) {
           // Validate conditional node inputs
           if (!nodeData.currencyMode) {
-            throw new Error(`Conditional node is missing currency mode`);
+            throw new Error(`Node ${i + 1} conditional is missing currency mode`);
           }
           if (nodeData.currencyMode === 'single') {
             if (!nodeData.currencyA || !nodeData.operator || !nodeData.value) {
-              throw new Error(`Conditional node is incomplete (currency/operator/value)`);
+              throw new Error(`Node ${i + 1} conditional is incomplete (currency/operator/value)`);
             }
           } else {
             if (!nodeData.currencyA || !nodeData.currencyB || !nodeData.operator || !nodeData.value) {
-              throw new Error(`Ratio node is incomplete (currencyA/currencyB/operator/value)`);
+              throw new Error(`Node ${i + 1} ratio is incomplete (currencyA/currencyB/operator/value)`);
             }
           }
+
 
           console.log('Calling createConditionalRule with:', {
             currencyMode: nodeData.currencyMode,
@@ -408,8 +325,9 @@ const PlaygroundSelector = () => {
         } else {
           // Transaction node - validate required fields
           if (!nodeData.value || !nodeData.walletAddress) {
-            throw new Error(`Transaction node is missing required data (amount or wallet address)`);
+            throw new Error(`Node ${i + 1} is missing required data (amount or wallet address)`);
           }
+
 
           console.log('Calling createNativeRule with:', {
             isEth: nodeData.isEth,
@@ -425,13 +343,16 @@ const PlaygroundSelector = () => {
         }
 
         if (!result.success) {
-          console.error(`Failed to process node:`, result);
-          throw new Error(`Failed to process node: ${result.error}`);
+          console.error(`Failed to process node ${i + 1}:`, result);
+          updateNodeExecutionState(node.id, 'error');
+          throw new Error(`Failed to process node ${i + 1}: ${result.error}`);
         }
 
-        // Store the rule ID for this node
+        // Set node to completed state
+        updateNodeExecutionState(node.id, 'completed');
+
+        // Use on-chain rule id returned by transaction
         const currentRuleId = result.ruleId;
-        nodeToRuleId.set(node.id, currentRuleId);
 
         // Determine if this is a conditional node and find true/false connections
         let isConditionalBranching = 0;
@@ -446,73 +367,79 @@ const PlaygroundSelector = () => {
             edge.source === node.id
           );
 
-          // Find true and false target nodes in the execution path
+          // Find true and false target nodes
           for (const edge of connectedEdges) {
-            const targetNodeId = edge.target;
-            const targetRuleId = nodeToRuleId.get(targetNodeId);
-            
-            if (targetRuleId !== undefined) {
-              if (edge.data?.type === 'conditional-true') {
-                trueRuleId = targetRuleId;
-              } else if (edge.data?.type === 'conditional-false') {
-                falseRuleId = targetRuleId;
+            const targetNode = sortedNodes.find(n => n.id === edge.target);
+            if (targetNode && targetNode.type === 'entityNode') {
+              // Find the rule ID for this target node by looking ahead in the sorted list
+              const targetIndex = sortedNodes.findIndex(n => n.id === edge.target);
+              if (targetIndex > i) {
+                // This target node comes after current node, so it will have a rule ID
+                // We need to account for the fact that rule IDs are assigned sequentially
+                const targetRuleId = targetIndex; // This will be the index in the rules array
+                
+                if (edge.data?.type === 'conditional-true') {
+                  trueRuleId = targetRuleId;
+                } else if (edge.data?.type === 'conditional-false') {
+                  falseRuleId = targetRuleId;
+                }
               }
             }
           }
         }
 
-        // Create rule object for API
+        // Create rule object for API (linking will be set after loop)
         rules.push({
-          rule_id: currentRuleId,
+          rule_id: (node.type === 'conditionalNode' || nodeData.currencyMode) ? currentRuleId : (nodeData.isEth ? currentRuleId-1 : currentRuleId),
           operation: "cross chain",
           oapp_address: (node.type === 'conditionalNode' || nodeData.currencyMode) ? ethOappAddress : (nodeData.isEth ? ethOappAddress : hederaOappAddress),
           chain: (node.type === 'conditionalNode' || nodeData.currencyMode) ? "eth" : (nodeData.isEth ? "eth" : "hbar"),
           is_condition_branching: isConditionalBranching,
-          next_id: null, // Will be set later
+          next_id: null,
           is_true: trueRuleId,
           is_false: falseRuleId,
-          is_terminated: 0 // Will be set later
+          is_terminated: 0
         });
 
         // Small delay between transactions
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      // Link rules and set termination flags based on workflow structure
+      // Link rules by their actual on-chain ids
       for (let i = 0; i < rules.length; i++) {
-        const rule = rules[i];
-        
-        // For conditional nodes, set next_id to null and let is_true/is_false handle branching
-        if (rule.is_condition_branching === 1) {
-          rule.next_id = null; // Conditional nodes don't have sequential next
+        // Set next_id for sequential execution (only for non-conditional nodes)
+        if (rules[i].is_condition_branching === 0) {
+          rules[i].next_id = i < rules.length - 1 ? rules[i + 1].rule_id : null;
         } else {
-          // For regular nodes, check if they're terminal (no outgoing edges)
-          const currentNode = executionPath[i];
-          const hasOutgoingEdges = activePlayground.edges.some(edge => edge.source === currentNode.nodeId);
-          
-          if (hasOutgoingEdges) {
-            // This node has outgoing edges, find the next node in execution order
-            const nextNodeIndex = i + 1;
-            if (nextNodeIndex < rules.length) {
-              rule.next_id = rules[nextNodeIndex].rule_id;
-            } else {
-              rule.next_id = null;
-            }
-          } else {
-            // This node has no outgoing edges, it's terminal
-            rule.next_id = null;
-          }
+          // Conditional nodes don't have sequential next_id
+          rules[i].next_id = null;
         }
         
-        // Set termination flag
-        rule.is_terminated = rule.next_id === null ? 1 : 0;
+        // For conditional nodes, update true/false rule IDs to actual rule IDs
+        if (rules[i].is_condition_branching === 1) {
+          if (rules[i].is_true !== null) {
+            // Find the actual rule ID for the true target
+            const trueTargetIndex = rules[i].is_true;
+            if (trueTargetIndex < rules.length) {
+              rules[i].is_true = rules[trueTargetIndex].rule_id;
+            }
+          }
+          if (rules[i].is_false !== null) {
+            // Find the actual rule ID for the false target
+            const falseTargetIndex = rules[i].is_false;
+            if (falseTargetIndex < rules.length) {
+              rules[i].is_false = rules[falseTargetIndex].rule_id;
+            }
+          }
+        }
       }
 
-      setExecutionProgress({ 
-        current: executionPath.length, 
-        total: executionPath.length, 
-        step: 'Submitting workflow to API...' 
-      });
+      // Mark terminal nodes (nodes with no outgoing connections)
+      for (let i = 0; i < rules.length; i++) {
+        const isTerminal = !rules[i].next_id && !rules[i].is_true && !rules[i].is_false;
+        rules[i].is_terminated = isTerminal ? 1 : 0;
+      }
+
 
       // Prepare API payload
       const apiPayload = {
@@ -528,7 +455,7 @@ const PlaygroundSelector = () => {
       const apiResult = await workflowAPIService.executeRules(apiPayload);
 
       if (apiResult.success) {
-        alert(`✅ Workflow executed successfully!\n${executionPath.length} nodes processed and submitted.`);
+        alert(`✅ Workflow executed successfully!\nAll ${sortedNodes.length} transactions signed and submitted.`);
       } else {
         throw new Error(`API call failed: ${apiResult.error}`);
       }
@@ -538,7 +465,6 @@ const PlaygroundSelector = () => {
       alert(`❌ Workflow execution failed: ${error.message}`);
     } finally {
       setIsExecutingWorkflow(false);
-      setExecutionProgress({ current: 0, total: 0, step: '' });
     }
   };
 
@@ -551,9 +477,8 @@ const PlaygroundSelector = () => {
       <div className="relative">
         <motion.button
           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-          className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          className={buttonStyles.secondary}
+          {...motionProps}
         >
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-2 h-2 bg-emerald-500 rounded-full shadow-sm"></div>
@@ -625,9 +550,8 @@ const PlaygroundSelector = () => {
                       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                         <motion.button
                           onClick={(e) => handleRenameStart(playground, e)}
-                          className="p-1 hover:bg-gray-200 rounded-md transition-colors duration-200"
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
+                          className={buttonStyles.icon}
+                          {...motionProps}
                         >
                           <svg className="w-3 h-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -636,9 +560,8 @@ const PlaygroundSelector = () => {
                         {playgrounds.length > 1 && (
                           <motion.button
                             onClick={(e) => handleDeletePlayground(playground.id, e)}
-                            className="p-1 hover:bg-red-100 rounded-md transition-colors duration-200"
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.9 }}
+                            className={buttonStyles.iconDanger}
+                            {...motionProps}
                           >
                             <svg className="w-3 h-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -661,9 +584,8 @@ const PlaygroundSelector = () => {
       {/* Add New Playground Button - Outside Dropdown */}
       <motion.button
         onClick={() => setIsCreating(true)}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white rounded-md font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md"
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
+        className={buttonStyles.primary}
+        {...motionProps}
       >
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -675,9 +597,8 @@ const PlaygroundSelector = () => {
         <div className="relative">
           <motion.button
             onClick={() => setIsConnectDropdownOpen(!isConnectDropdownOpen)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            className={buttonStyles.primary}
+            {...motionProps}
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -711,7 +632,7 @@ const PlaygroundSelector = () => {
                       <button
                         key={option.id}
                         onClick={() => handleConnectNodes(option)}
-                        className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-md transition-colors duration-200 flex items-center gap-2"
+                        className={buttonStyles.dropdown}
                       >
                         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                         {option.label}
@@ -729,9 +650,8 @@ const PlaygroundSelector = () => {
       <div className="relative">
         <motion.button
           onClick={() => setIsNodeDropdownOpen(!isNodeDropdownOpen)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          className={buttonStyles.primary}
+          {...motionProps}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -763,14 +683,14 @@ const PlaygroundSelector = () => {
                 <div className="space-y-1">
                   <button
                     onClick={() => handleAddNode('transaction')}
-                    className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-md transition-colors duration-200 flex items-center gap-2"
+                    className={buttonStyles.dropdown}
                   >
                     <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                     Transaction Node
                   </button>
                   <button
                     onClick={() => handleAddNode('conditional')}
-                    className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-md transition-colors duration-200 flex items-center gap-2"
+                    className={buttonStyles.dropdown}
                   >
                     <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
                     Conditional Node
@@ -786,9 +706,8 @@ const PlaygroundSelector = () => {
       {isConnected && ethOappAddress && hederaOappAddress && (
         <motion.button
           onClick={() => setIsFundingOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          className={buttonStyles.primary}
+          {...motionProps}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
@@ -802,13 +721,12 @@ const PlaygroundSelector = () => {
       <motion.button
         onClick={handleExecuteWorkflow}
         disabled={!activePlayground?.nodes?.length || isExecutingWorkflow || !isConnected}
-        className={`flex items-center gap-1.5 px-4 py-2 rounded-md font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md ${
+        className={
           !activePlayground?.nodes?.length || isExecutingWorkflow || !isConnected
-            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            : 'bg-green-600 hover:bg-green-700 text-white'
-        }`}
-        whileHover={!isExecutingWorkflow && activePlayground?.nodes?.length && isConnected ? { scale: 1.02 } : {}}
-        whileTap={!isExecutingWorkflow && activePlayground?.nodes?.length && isConnected ? { scale: 0.98 } : {}}
+            ? buttonStyles.disabled
+            : buttonStyles.primary
+        }
+        {...motionProps}
         title={
           !isConnected ? 'Connect wallet first' :
           !activePlayground?.nodes?.length ? 'Add nodes to workflow' :
@@ -860,17 +778,15 @@ const PlaygroundSelector = () => {
                   setIsCreating(false);
                   setNewPlaygroundName('');
                 }}
-                className="px-3 py-1.5 text-gray-600 hover:text-gray-800 transition-colors duration-200 text-sm"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                className={buttonStyles.ghost}
+                {...motionProps}
               >
                 Cancel
               </motion.button>
               <motion.button
                 onClick={handleCreatePlayground}
-                className="px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white rounded-md transition-colors duration-200 text-sm"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                className={buttonStyles.primary}
+                {...motionProps}
               >
                 Create
               </motion.button>
@@ -879,54 +795,6 @@ const PlaygroundSelector = () => {
         </div>
       )}
 
-      {/* Execution Progress Modal */}
-      {isExecutingWorkflow && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white rounded-lg p-6 w-96 shadow-2xl"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Executing Workflow</h3>
-            </div>
-
-            <div className="space-y-4">
-              {/* Progress Bar */}
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <motion.div
-                  className="bg-green-600 h-2 rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ 
-                    width: `${(executionProgress.current / executionProgress.total) * 100}%` 
-                  }}
-                  transition={{ duration: 0.3 }}
-                />
-              </div>
-
-              {/* Progress Text */}
-              <div className="text-center">
-                <p className="text-sm text-gray-600 mb-1">
-                  {executionProgress.step}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {executionProgress.current} of {executionProgress.total} transactions
-                </p>
-              </div>
-
-              {/* Detailed Progress */}
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-600 space-y-1">
-                  <p>• Signing transactions sequentially</p>
-                  <p>• Creating blockchain rules</p>
-                  <p>• Submitting to workflow API</p>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
 
       {/* Funding Modal */}
       {isFundingOpen && (
@@ -984,13 +852,12 @@ const PlaygroundSelector = () => {
                   <motion.button
                     onClick={handleEthFunding}
                     disabled={!ethAmount || isProcessingEth || isEthPending}
-                    className={`px-4 py-2 rounded-md font-medium text-sm transition-all duration-200 ${
+                    className={
                       !ethAmount || isProcessingEth || isEthPending
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-blue-600 hover:bg-blue-700 text-white'
-                    }`}
-                    whileHover={!isProcessingEth && !isEthPending && ethAmount ? { scale: 1.02 } : {}}
-                    whileTap={!isProcessingEth && !isEthPending && ethAmount ? { scale: 0.98 } : {}}
+                        ? buttonStyles.disabled
+                        : buttonStyles.primary
+                    }
+                    {...motionProps}
                   >
                     {isProcessingEth || isEthPending ? (
                       <div className="flex items-center gap-2">
@@ -1041,13 +908,12 @@ const PlaygroundSelector = () => {
                   <motion.button
                     onClick={handleHederaFunding}
                     disabled={!hederaAmount || isProcessingHedera || isHederaPending}
-                    className={`px-4 py-2 rounded-md font-medium text-sm transition-all duration-200 ${
+                    className={
                       !hederaAmount || isProcessingHedera || isHederaPending
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-green-600 hover:bg-green-700 text-white'
-                    }`}
-                    whileHover={!isProcessingHedera && !isHederaPending && hederaAmount ? { scale: 1.02 } : {}}
-                    whileTap={!isProcessingHedera && !isHederaPending && hederaAmount ? { scale: 0.98 } : {}}
+                        ? buttonStyles.disabled
+                        : buttonStyles.primary
+                    }
+                    {...motionProps}
                   >
                     {isProcessingHedera || isHederaPending ? (
                       <div className="flex items-center gap-2">
@@ -1079,9 +945,8 @@ const PlaygroundSelector = () => {
                     setIsFundingOpen(false);
                     resetFundingForm();
                   }}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors duration-200 text-sm"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
+                  className={buttonStyles.ghost}
+                  {...motionProps}
                 >
                   Close
                 </motion.button>

@@ -7,7 +7,7 @@ export const BLOCKCHAIN_CONFIG = {
   
   // RPC URLs
   RPC_URL: "https://eth-sepolia.g.alchemy.com/v2/oIYpahzrgNt5HRj3VtqwTwdYsJyc9ymZ", // Replace with your actual Ethereum RPC URL
-  HEDERA_RPC_URL: "https://compatible-omniscient-theorem.hedera-testnet.quiknode.pro/b0b1b5cd783d39fc86da9afa59631f74310a98c0", // Replace with your actual Hedera RPC URL
+  HEDERA_RPC_URL: "https://testnet.hashio.io/api", // Replace with your actual Hedera RPC URL
   
   // Network IDs
   ETHEREUM_CHAIN_ID: 11155111, // Sepolia testnet
