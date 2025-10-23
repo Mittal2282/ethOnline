@@ -13,7 +13,7 @@ const {
 // RuleAction enum values
 const RuleAction = {
   NativeTransfer: 0,
-  CrossChainTransfer: 1
+  CrossChainSwap: 1
 };
 
 // Operator enum values
@@ -282,6 +282,117 @@ class BlockchainService {
     } catch (error) {
       console.error('Error getting rule:', error);
       return null;
+    }
+  }
+
+  async createSwapRule(nodeData) {
+    try {
+      const { swapDirection, value, destinationWallet } = nodeData;
+      
+      // Determine source and destination chains based on swap direction
+      const isEthToHbar = swapDirection === 'ethToHbar';
+      const sourceContract = isEthToHbar ? this.contract : this.contractHedera;
+      const sourceChain = isEthToHbar ? 'ETH' : 'HBAR';
+      const destChain = isEthToHbar ? 'HBAR' : 'ETH';
+      
+      // Check if contract is available
+      if (!sourceContract) {
+        const network = isEthToHbar ? 'Ethereum' : 'Hedera';
+        throw new Error(`${network} contract address not available. Please deploy contracts first.`);
+      }
+      
+      // Parse the amount based on the source network
+      const sourceDecimals = isEthToHbar ? 18 : 8; // ETH uses 18 decimals, HBAR uses 8
+      const destDecimals = isEthToHbar ? 8 : 18; // Destination uses opposite decimals
+      const amount = ethers.parseUnits(value, sourceDecimals);
+      
+      // LayerZero endpoint IDs
+      const ETH_EID = 40161;
+      const HEDERA_EID = 40285;
+      const dstEid = isEthToHbar ? HEDERA_EID : ETH_EID;
+      
+      // Create rule object for cross-chain swap
+      const rule = {
+        which_rule: `CrossChainSwap ${sourceChain}→${destChain}`,
+        recipient: destinationWallet, // User-provided destination wallet address
+        amount: amount,
+        action: RuleAction.CrossChainSwap,
+        dstEid: dstEid,
+        slippageBps: 100, // 1% slippage tolerance
+        srcDecimals: sourceDecimals,
+        dstDecimals: destDecimals
+      };
+
+      // Pyth price feed IDs
+      const baseFeed = isEthToHbar ? PYTH_IDS.ETH : PYTH_IDS.HBAR;
+      const quoteFeed = isEthToHbar ? PYTH_IDS.HBAR : PYTH_IDS.ETH;
+      const priceIds = [baseFeed, quoteFeed];
+      
+      console.log('Fetching price updates for swap:', priceIds);
+      
+      let priceUpdateDataArray = [];
+      
+      try {
+        const hermes = new HermesClient();
+        const priceFeedUpdateData = await hermes.getLatestPriceUpdates(priceIds);
+        console.log('Price feed update data received:', priceFeedUpdateData);
+        
+        // Convert to 0x-prefixed hex strings as expected by the contract
+        if (priceFeedUpdateData?.binary?.data) {
+          console.log('Processing binary data:', priceFeedUpdateData.binary.data);
+          priceUpdateDataArray = priceFeedUpdateData.binary.data.map((d, index) => {
+            console.log(`Processing item ${index}:`, typeof d, d);
+            return ethers.hexlify(d);
+          });
+        }
+        console.log('Final priceUpdateDataArray:', priceUpdateDataArray);
+      } catch (error) {
+        console.error('Error fetching/processing price updates:', error);
+        console.warn('⚠️ Falling back to empty price update data array');
+        priceUpdateDataArray = [];
+      }
+
+      // Create condition object (for ratio calculation, not as a condition)
+      const condition = {
+        baseFeed: baseFeed,
+        quoteFeed: quoteFeed,
+        threshold: 0,
+        op: Operator.GT,
+        isPair: true, // For cross-chain ratio calculation
+        enabled: false, // Not conditional, just for ratio calc
+        pythPriceUpdate: priceUpdateDataArray
+      };
+
+      console.log('Creating swap rule:', rule);
+      console.log('With condition:', condition);
+
+      // Send transaction
+      const tx = await sourceContract.createNativeRule(rule, condition);
+      console.log('📤 Sent swap transaction:', tx.hash);
+
+      // Wait for transaction receipt
+      const receipt = await tx.wait();
+      console.log('✅ Swap rule created in block:', receipt.blockNumber);
+
+      // Get the rule ID
+      const count = await sourceContract.getCountRules();
+      const ruleId = Number(count) - 1;
+      console.log(`Rule ID for ${sourceChain} → ${destChain} swap:`, ruleId);
+
+      return {
+        success: true,
+        ruleId: ruleId,
+        transactionHash: tx.hash,
+        blockNumber: receipt.blockNumber,
+        isEthToHbar: isEthToHbar
+      };
+
+    } catch (error) {
+      console.error('Error creating swap rule:', error);
+      return {
+        success: false,
+        error: error.message
+      };
     }
   }
 }

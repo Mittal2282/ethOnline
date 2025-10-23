@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePlayground } from '../../hooks/usePlayground';
 import { motion, AnimatePresence } from 'framer-motion'; // eslint-disable-line no-unused-vars
 import { useAccount, useWriteContract, useSwitchChain } from 'wagmi';
@@ -59,6 +59,13 @@ const PlaygroundSelector = () => {
   const [hederaError, setHederaError] = useState('');
   const [ethBridgeError, setEthBridgeError] = useState('');
   const [hederaBridgeError, setHederaBridgeError] = useState('');
+  
+  // Balance states
+  const [ethUserBalance, setEthUserBalance] = useState('0');
+  const [ethBridgeBalance, setEthBridgeBalance] = useState('0');
+  const [hederaUserBalance, setHederaUserBalance] = useState('0');
+  const [hederaBridgeBalance, setHederaBridgeBalance] = useState('0');
+  const [isLoadingBalances, setIsLoadingBalances] = useState(false);
   
   // Workflow execution states
   const [isExecutingWorkflow, setIsExecutingWorkflow] = useState(false);
@@ -151,8 +158,25 @@ const PlaygroundSelector = () => {
         if (!alreadyConnected) {
           const sourceNodeNumber = sourceNode.data?.nodeNumber || (i + 1);
           const targetNodeNumber = targetNode.data?.nodeNumber || (j + 1);
-          const sourceNodeType = sourceNode.data?.isEth !== undefined ? 'Transaction Node' : 'Conditional Node';
-          const targetNodeType = targetNode.data?.isEth !== undefined ? 'Transaction Node' : 'Conditional Node';
+          
+          // Determine node type
+          let sourceNodeType, targetNodeType;
+          
+          if (sourceNode.type === 'swappingNode' || sourceNode.data?.swapDirection) {
+            sourceNodeType = 'Swap Node';
+          } else if (sourceNode.type === 'conditionalNode' || sourceNode.data?.currencyMode) {
+            sourceNodeType = 'Conditional Node';
+          } else {
+            sourceNodeType = 'Transaction Node';
+          }
+          
+          if (targetNode.type === 'swappingNode' || targetNode.data?.swapDirection) {
+            targetNodeType = 'Swap Node';
+          } else if (targetNode.type === 'conditionalNode' || targetNode.data?.currencyMode) {
+            targetNodeType = 'Conditional Node';
+          } else {
+            targetNodeType = 'Transaction Node';
+          }
           
           options.push({
             id: `${sourceNode.id}-${targetNode.id}`,
@@ -206,6 +230,8 @@ const PlaygroundSelector = () => {
       // Success - clear the input
       setEthAmount('');
       alert('ETH deposited successfully to contract!');
+      // Refresh balances
+      await fetchContractBalances();
     } catch (error) {
       console.error('ETH deposit error:', error);
       setEthError(error.message || 'Failed to deposit ETH to contract');
@@ -242,6 +268,8 @@ const PlaygroundSelector = () => {
       // Success - clear the input
       setHederaAmount('');
       alert('HBAR deposited successfully to contract!');
+      // Refresh balances
+      await fetchContractBalances();
     } catch (error) {
       console.error('Hedera deposit error:', error);
       setHederaError(error.message || 'Failed to deposit HBAR to contract');
@@ -280,6 +308,8 @@ const PlaygroundSelector = () => {
       // Success - clear the input
       setEthBridgeAmount('');
       alert('ETH bridge funds deposited successfully!');
+      // Refresh balances
+      await fetchContractBalances();
     } catch (error) {
       console.error('ETH bridge deposit error:', error);
       setEthBridgeError(error.message || 'Failed to deposit ETH bridge funds');
@@ -318,6 +348,8 @@ const PlaygroundSelector = () => {
       // Success - clear the input
       setHederaBridgeAmount('');
       alert('HBAR bridge funds deposited successfully!');
+      // Refresh balances
+      await fetchContractBalances();
     } catch (error) {
       console.error('Hedera bridge deposit error:', error);
       setHederaBridgeError(error.message || 'Failed to deposit HBAR bridge funds');
@@ -340,6 +372,73 @@ const PlaygroundSelector = () => {
     setIsProcessingEthBridge(false);
     setIsProcessingHederaBridge(false);
   };
+
+  // Fetch contract balances
+  const fetchContractBalances = async () => {
+    if (!ethOappAddress && !hederaOappAddress) {
+      return;
+    }
+
+    setIsLoadingBalances(true);
+
+    try {
+      // Fetch ETH contract balances
+      if (ethOappAddress) {
+        const provider = new ethers.JsonRpcProvider('https://ethereum-sepolia-rpc.publicnode.com');
+        const ethContract = new ethers.Contract(ethOappAddress, contractABI, provider);
+        
+        try {
+          const userBal = await ethContract.userBalance();
+          setEthUserBalance(ethers.formatEther(userBal));
+        } catch (error) {
+          console.error('Error fetching ETH user balance:', error);
+          setEthUserBalance('0');
+        }
+
+        try {
+          const bridgeBal = await ethContract.protocolBalance();
+          setEthBridgeBalance(ethers.formatEther(bridgeBal));
+        } catch (error) {
+          console.error('Error fetching ETH bridge balance:', error);
+          setEthBridgeBalance('0');
+        }
+      }
+
+      // Fetch Hedera contract balances
+      if (hederaOappAddress) {
+        const hederaProvider = new ethers.JsonRpcProvider('https://testnet.hashio.io/api');
+        const hederaContract = new ethers.Contract(hederaOappAddress, contractABI, hederaProvider);
+        
+        try {
+          const userBal = await hederaContract.userBalance();
+          setHederaUserBalance(ethers.formatUnits(userBal, 8)); // HBAR uses 8 decimals
+        } catch (error) {
+          console.error('Error fetching Hedera user balance:', error);
+          setHederaUserBalance('0');
+        }
+
+        try {
+          const bridgeBal = await hederaContract.protocolBalance();
+          setHederaBridgeBalance(ethers.formatUnits(bridgeBal, 8)); // HBAR uses 8 decimals
+        } catch (error) {
+          console.error('Error fetching Hedera bridge balance:', error);
+          setHederaBridgeBalance('0');
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching contract balances:', error);
+    } finally {
+      setIsLoadingBalances(false);
+    }
+  };
+
+  // Fetch balances on component mount and when contracts are available
+  useEffect(() => {
+    if (ethOappAddress || hederaOappAddress) {
+      fetchContractBalances();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ethOappAddress, hederaOappAddress]);
 
   // Workflow execution handler
   const handleExecuteWorkflow = async () => {
@@ -412,6 +511,29 @@ const PlaygroundSelector = () => {
             currencyA: nodeData.currencyA,
             currencyB: nodeData.currencyB,
           }, address);
+        } else if (node.type === 'swappingNode' || nodeData.swapDirection) {
+          // Swapping node - validate required fields
+          if (!nodeData.value) {
+            throw new Error(`Node ${i + 1} swap is missing amount`);
+          }
+          if (!nodeData.swapDirection) {
+            throw new Error(`Node ${i + 1} swap is missing swap direction`);
+          }
+          if (!nodeData.destinationWallet) {
+            throw new Error(`Node ${i + 1} swap is missing destination wallet address`);
+          }
+
+          console.log('Calling createSwapRule with:', {
+            swapDirection: nodeData.swapDirection,
+            value: nodeData.value,
+            destinationWallet: nodeData.destinationWallet
+          });
+
+          result = await blockchainService.createSwapRule({
+            swapDirection: nodeData.swapDirection,
+            value: nodeData.value,
+            destinationWallet: nodeData.destinationWallet
+          });
         } else {
           // Transaction node - validate required fields
           if (!nodeData.value || !nodeData.walletAddress) {
@@ -478,12 +600,32 @@ const PlaygroundSelector = () => {
           }
         }
 
+        // Determine chain and oapp address based on node type
+        let chainName, oappAddr, adjustedRuleId;
+        
+        if (node.type === 'conditionalNode' || nodeData.currencyMode) {
+          chainName = "eth";
+          oappAddr = ethOappAddress;
+          adjustedRuleId = currentRuleId;
+        } else if (node.type === 'swappingNode' || nodeData.swapDirection) {
+          // For swapping nodes, use source chain
+          const isEthToHbar = nodeData.swapDirection === 'ethToHbar';
+          chainName = isEthToHbar ? "eth" : "hbar";
+          oappAddr = isEthToHbar ? ethOappAddress : hederaOappAddress;
+          adjustedRuleId = isEthToHbar ? currentRuleId-1 : currentRuleId;
+        } else {
+          // Transaction node
+          chainName = nodeData.isEth ? "eth" : "hbar";
+          oappAddr = nodeData.isEth ? ethOappAddress : hederaOappAddress;
+          adjustedRuleId = nodeData.isEth ? currentRuleId-1 : currentRuleId;
+        }
+
         // Create rule object for API (linking will be set after loop)
         rules.push({
-          rule_id: (node.type === 'conditionalNode' || nodeData.currencyMode) ? currentRuleId : (nodeData.isEth ? currentRuleId-1 : currentRuleId),
+          rule_id: adjustedRuleId,
           operation: "cross chain",
-          oapp_address: (node.type === 'conditionalNode' || nodeData.currencyMode) ? ethOappAddress : (nodeData.isEth ? ethOappAddress : hederaOappAddress),
-          chain: (node.type === 'conditionalNode' || nodeData.currencyMode) ? "eth" : (nodeData.isEth ? "eth" : "hbar"),
+          oapp_address: oappAddr,
+          chain: chainName,
           is_condition_branching: isConditionalBranching,
           next_id: null,
           is_true: trueRuleId,
@@ -785,6 +927,13 @@ const PlaygroundSelector = () => {
                     <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
                     Conditional Node
                   </button>
+                  <button
+                    onClick={() => handleAddNode('swap')}
+                    className={buttonStyles.dropdown}
+                  >
+                    <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                    Swap Node
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -792,10 +941,70 @@ const PlaygroundSelector = () => {
         </AnimatePresence>
       </div>
 
-      {/* Add Funds Button */}
+      {/* Add Funds Button with Balance Display */}
       {isConnected && ethOappAddress && hederaOappAddress && (
+        <div className="flex items-center gap-2">
+          {/* Balance Display Dropdown */}
+          <div className="relative group">
         <motion.button
-          onClick={() => setIsFundingOpen(true)}
+              onClick={fetchContractBalances}
+              className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-50 to-purple-50 border border-gray-200 rounded-md hover:shadow-md transition-all duration-200"
+              {...motionProps}
+              title="Click to refresh balances"
+            >
+              <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              </svg>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="font-semibold text-blue-600">{parseFloat(ethUserBalance).toFixed(4)} ETH</span>
+                <span className="text-gray-400">|</span>
+                <span className="font-semibold text-purple-600">{parseFloat(hederaUserBalance).toFixed(4)} HBAR</span>
+              </div>
+              {isLoadingBalances && (
+                <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              )}
+            </motion.button>
+
+            {/* Hover Tooltip with Full Details */}
+            <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 p-3">
+              <div className="text-xs font-semibold text-gray-700 mb-2">Contract Balances</div>
+              <div className="space-y-2">
+                <div className="bg-blue-50 rounded-md p-2 border border-blue-200">
+                  <div className="text-xs font-medium text-gray-600 mb-1">Ethereum (ETH)</div>
+                  <div className="space-y-0.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">Transactions:</span>
+                      <span className="text-xs font-semibold text-blue-600">{parseFloat(ethUserBalance).toFixed(6)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">Bridge:</span>
+                      <span className="text-xs font-semibold text-blue-600">{parseFloat(ethBridgeBalance).toFixed(6)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-purple-50 rounded-md p-2 border border-purple-200">
+                  <div className="text-xs font-medium text-gray-600 mb-1">Hedera (HBAR)</div>
+                  <div className="space-y-0.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">Transactions:</span>
+                      <span className="text-xs font-semibold text-purple-600">{parseFloat(hederaUserBalance).toFixed(6)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">Bridge:</span>
+                      <span className="text-xs font-semibold text-purple-600">{parseFloat(hederaBridgeBalance).toFixed(6)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="text-xs text-gray-500 mt-2 text-center">Click to refresh</div>
+            </div>
+          </div>
+
+          <motion.button
+            onClick={() => {
+              setIsFundingOpen(true);
+              fetchContractBalances();
+            }}
           className={buttonStyles.primary}
           {...motionProps}
         >
@@ -804,6 +1013,7 @@ const PlaygroundSelector = () => {
           </svg>
           Add Funds
         </motion.button>
+        </div>
       )}
       </div>
 
@@ -888,14 +1098,15 @@ const PlaygroundSelector = () => {
 
       {/* Funding Modal */}
       {isFundingOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white rounded-lg p-6 w-96 shadow-2xl"
+            className="bg-white rounded-lg w-full max-w-md shadow-2xl flex flex-col max-h-[90vh]"
           >
-            <div className="flex items-center justify-between mb-4">
+            {/* Fixed Header */}
+            <div className="flex items-center justify-between p-6 pb-4 border-b border-gray-200 flex-shrink-0">
               <h3 className="text-lg font-semibold text-gray-900">Deposit Funds to Contracts</h3>
               <motion.button
                 onClick={() => {
@@ -910,6 +1121,64 @@ const PlaygroundSelector = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </motion.button>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="overflow-y-auto flex-1 px-6 py-4">
+            {/* Contract Balances Display */}
+            <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-gray-200">
+              <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                Contract Balances
+                {isLoadingBalances && (
+                  <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                )}
+              </h4>
+              
+              <div className="grid grid-cols-2 gap-3">
+                {/* ETH Balances */}
+                <div className="bg-white rounded-md p-3 border border-blue-200">
+                  <div className="text-xs font-medium text-gray-600 mb-1">Ethereum (ETH)</div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">Transaction Funds:</span>
+                      <span className="text-xs font-semibold text-blue-600">{parseFloat(ethUserBalance).toFixed(6)} ETH</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">Bridge Funds:</span>
+                      <span className="text-xs font-semibold text-blue-600">{parseFloat(ethBridgeBalance).toFixed(6)} ETH</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Hedera Balances */}
+                <div className="bg-white rounded-md p-3 border border-purple-200">
+                  <div className="text-xs font-medium text-gray-600 mb-1">Hedera (HBAR)</div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">Transaction Funds:</span>
+                      <span className="text-xs font-semibold text-purple-600">{parseFloat(hederaUserBalance).toFixed(6)} HBAR</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">Bridge Funds:</span>
+                      <span className="text-xs font-semibold text-purple-600">{parseFloat(hederaBridgeBalance).toFixed(6)} HBAR</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <button
+                onClick={fetchContractBalances}
+                disabled={isLoadingBalances}
+                className="mt-3 w-full text-xs py-1.5 px-2 bg-white hover:bg-gray-50 text-gray-700 rounded-md border border-gray-300 transition-colors flex items-center justify-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Refresh Balances
+              </button>
             </div>
 
             <div className="space-y-4">
@@ -1139,8 +1408,11 @@ const PlaygroundSelector = () => {
                 </div>
               </div>
             </div>
+            </div>
+            {/* End Scrollable Content */}
 
-            <div className="mt-6 pt-4 border-t border-gray-200">
+            {/* Fixed Footer */}
+            <div className="p-6 pt-4 border-t border-gray-200 flex-shrink-0 bg-white rounded-b-lg">
               <div className="flex justify-end gap-2">
                 <motion.button
                   onClick={() => {

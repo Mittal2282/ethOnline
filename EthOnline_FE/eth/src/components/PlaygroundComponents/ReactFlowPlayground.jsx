@@ -13,6 +13,7 @@ import 'reactflow/dist/style.css';
 import { motion } from 'framer-motion'; // eslint-disable-line no-unused-vars
 import EntityNode from './EntityNode';
 import ConditionalNode from './ConditionalNode';
+import SwappingNode from './SwappingNode';
 import CustomEdge from './CustomEdge';
 import { usePlayground } from '../../hooks/usePlayground';
 
@@ -20,6 +21,7 @@ import { usePlayground } from '../../hooks/usePlayground';
 const nodeTypes = {
   entityNode: EntityNode,
   conditionalNode: ConditionalNode,
+  swappingNode: SwappingNode,
 };
 
 // Define the edge types (moved outside component to prevent recreation)
@@ -128,6 +130,27 @@ const ReactFlowPlayground = () => {
       };
 
       setNodes((nds) => nds.concat(conditionalNode));
+    } else if (nodeType === 'swap') {
+      // Create swapping node
+      const nodeNumber = nodes.length + 1;
+      const swappingNode = {
+        id: `swapping-node-${Date.now()}`,
+        type: 'swappingNode',
+        position,
+        data: {
+          swapDirection: 'ethToHbar',
+          value: '',
+          destinationWallet: '',
+          nodeNumber: nodeNumber,
+          onUpdate: (nodeData) => {
+            setNodes((nds) => nds.map((node) => 
+              node.id === swappingNode.id ? { ...node, data: { ...node.data, ...nodeData } } : node
+            ));
+          }
+        },
+      };
+
+      setNodes((nds) => nds.concat(swappingNode));
     }
   }, [reactFlowInstance, setNodes, nodes.length]);
 
@@ -451,8 +474,9 @@ const ReactFlowPlayground = () => {
                     <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
                   </div>
                   <div className="text-xs text-gray-400 space-y-1">
+                    <p>• Create Transaction, Conditional, or Swap nodes</p>
                     <p>• Toggle between ETH and Hedera networks</p>
-                    <p>• Set amount and destination wallet address</p>
+                    <p>• Swap tokens across chains with Swap nodes</p>
                     <p>• Hover over nodes to delete them</p>
                     <p>• Hover over connections to remove them</p>
                   </div>
