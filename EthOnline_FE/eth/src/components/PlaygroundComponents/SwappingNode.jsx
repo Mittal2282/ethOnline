@@ -9,7 +9,7 @@ const SwappingNode = ({ data, isConnectable }) => {
   const executionState = data?.executionState || 'idle';
   
   // Debug logging
-  console.log(`SwappingNode ${data?.id} execution state:`, executionState);
+  // console.log(`SwappingNode ${data?.id} execution state:`, executionState);
 
   const handleSwapDirectionToggle = () => {
     const newDirection = swapDirection === 'ethToHbar' ? 'hbarToEth' : 'ethToHbar';

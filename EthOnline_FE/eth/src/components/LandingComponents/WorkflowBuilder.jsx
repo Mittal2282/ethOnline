@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAccount, useConnect } from 'wagmi';
 import { useNavigate } from 'react-router-dom';
 import { usePlayground } from '../../hooks/usePlayground';
@@ -11,12 +11,113 @@ const WorkflowBuilder = () => {
   const [isFocused, setIsFocused] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [deploymentPhase, setDeploymentPhase] = useState(''); // 'checking', 'deploying', 'completed'
+  const [deploymentProgress, setDeploymentProgress] = useState(0);
+  const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState(240); // 4 minutes in seconds
+  const [currentTip, setCurrentTip] = useState(0);
+  const [deploymentError, setDeploymentError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
   const { isConnected, address } = useAccount();
   const { connect, connectors, isPending } = useConnect();
   const navigate = useNavigate();
   const { setDeploymentAddresses } = usePlayground();
 
   const metaMaskConnector = connectors.find(connector => connector.name === 'MetaMask');
+
+  // Educational tips to show during deployment
+  const deploymentTips = [
+    {
+      title: "Smart Contract Deployment",
+      content: "Your contracts are being deployed to both Ethereum and Hedera networks for cross-chain functionality."
+    },
+    {
+      title: "Cross-Chain Technology",
+      content: "LayerZero technology enables seamless communication between different blockchain networks."
+    },
+    {
+      title: "Security & Optimization",
+      content: "Each deployment includes comprehensive security checks and gas optimization."
+    },
+    {
+      title: "Automation Ready",
+      content: "Once deployed, you'll be able to create automated workflows that trigger across chains."
+    },
+    {
+      title: "Gas Efficiency",
+      content: "Our contracts are optimized for minimal gas usage while maintaining maximum security."
+    },
+    {
+      title: "Real-time Monitoring",
+      content: "Your deployed contracts will include built-in monitoring and analytics capabilities."
+    }
+  ];
+
+  // Deployment phases with detailed descriptions
+  const deploymentPhases = [
+    {
+      id: 'checking',
+      title: 'Verifying Deployment',
+      description: 'Checking if contracts are already deployed for your wallet',
+      duration: 10
+    },
+    {
+      id: 'deploying',
+      title: 'Deploying Contracts',
+      description: 'Deploying smart contracts to Ethereum and Hedera networks',
+      duration: 230
+    },
+    {
+      id: 'completed',
+      title: 'Deployment Complete',
+      description: 'Contracts deployed successfully! Redirecting to playground...',
+      duration: 5
+    }
+  ];
+
+  // Progress tracking and tips rotation
+  useEffect(() => {
+    if (!isDeploying) return;
+
+    const startTime = Date.now();
+    const totalDuration = deploymentPhases.reduce((sum, phase) => sum + phase.duration, 0) * 1000; // Convert to milliseconds
+
+    const progressInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min((elapsed / totalDuration) * 100, 100);
+      setDeploymentProgress(progress);
+      
+      const remaining = Math.max(0, (totalDuration - elapsed) / 1000);
+      setEstimatedTimeRemaining(Math.ceil(remaining));
+    }, 1000);
+
+    const tipsInterval = setInterval(() => {
+      setCurrentTip(prev => (prev + 1) % deploymentTips.length);
+    }, 8000); // Change tip every 8 seconds
+
+    return () => {
+      clearInterval(progressInterval);
+      clearInterval(tipsInterval);
+    };
+  }, [isDeploying]);
+
+  // Reset progress when deployment starts
+  useEffect(() => {
+    if (isDeploying) {
+      setDeploymentProgress(0);
+      setEstimatedTimeRemaining(240);
+      setCurrentTip(0);
+    }
+  }, [isDeploying]);
+
+  // Helper functions
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getCurrentPhase = () => {
+    return deploymentPhases.find(phase => phase.id === deploymentPhase) || deploymentPhases[0];
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -45,6 +146,8 @@ const WorkflowBuilder = () => {
 
     setIsDeploying(true);
     setDeploymentPhase('checking');
+    setDeploymentError(null);
+    setRetryCount(0);
 
     try {
       // First, check if deployment already exists
@@ -78,11 +181,32 @@ const WorkflowBuilder = () => {
       }
     } catch (error) {
       console.error('Deployment error:', error);
-      alert(`Failed to deploy contract: ${error.message}`);
+      setDeploymentError({
+        message: error.message,
+        canRetry: retryCount < 3,
+        retryCount: retryCount + 1
+      });
+      setRetryCount(prev => prev + 1);
     } finally {
-      setIsDeploying(false);
-      setDeploymentPhase('');
+      if (!deploymentError) {
+        setIsDeploying(false);
+        setDeploymentPhase('');
+      }
     }
+  };
+
+  const handleRetryDeployment = async () => {
+    setDeploymentError(null);
+    await handleStartFromScratch();
+  };
+
+  const handleCancelDeployment = () => {
+    setIsDeploying(false);
+    setDeploymentPhase('');
+    setDeploymentError(null);
+    setRetryCount(0);
+    setDeploymentProgress(0);
+    setEstimatedTimeRemaining(240);
   };
 
   const containerVariants = {
@@ -233,55 +357,173 @@ const WorkflowBuilder = () => {
               </div>
             </motion.div>
 
-            {/* Deployment Progress Indicator */}
+            {/* Minimalistic Deployment Progress Modal */}
             {isDeploying && (
               <motion.div
-                className="mt-6 max-w-md mx-auto"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
+                className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
               >
-                <div className="bg-white/70 backdrop-blur-lg border border-gray-200/50 rounded-lg p-4 shadow-sm">
-                  <div className="flex items-center justify-center space-x-3 mb-3">
-                    <LoadingSpinner size="w-5 h-5" />
-                    <span className="text-sm font-medium text-gray-700">
-                      {deploymentPhase === 'checking' && 'Checking existing deployment...'}
-                      {deploymentPhase === 'deploying' && 'Deploying smart contracts...'}
-                      {deploymentPhase === 'completed' && 'Deployment completed!'}
-                    </span>
+                <motion.div
+                  className="bg-white border border-gray-200 rounded-xl p-6 shadow-lg max-w-md w-full"
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                >
+                  {/* Header */}
+                  <div className="text-center mb-6">
+                    <div className="w-12 h-12 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                      <LoadingSpinner size="w-6 h-6" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                      {getCurrentPhase().title}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      {getCurrentPhase().description}
+                    </p>
                   </div>
-                  
-                  {/* Progress Steps */}
-                  <div className="flex items-center justify-center space-x-2">
-                    {['checking', 'deploying', 'completed'].map((phase, index) => (
-                      <div key={phase} className="flex items-center">
-                        <div className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                          (deploymentPhase === phase) || 
-                          (phase === 'checking' && deploymentPhase === 'deploying') ||
-                          (phase === 'checking' && deploymentPhase === 'completed') ||
-                          (phase === 'deploying' && deploymentPhase === 'completed')
-                            ? 'bg-blue-500' 
-                            : 'bg-gray-300'
-                        }`} />
-                        {index < 2 && (
-                          <div className={`w-4 h-0.5 mx-1 transition-all duration-300 ${
-                            (phase === 'checking' && deploymentPhase === 'deploying') ||
-                            (phase === 'checking' && deploymentPhase === 'completed') ||
-                            (phase === 'deploying' && deploymentPhase === 'completed')
-                              ? 'bg-blue-500' 
-                              : 'bg-gray-300'
-                          }`} />
-                        )}
+
+                  {/* Progress Bar */}
+                  <div className="mb-6">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs font-medium text-gray-600">Progress</span>
+                      <span className="text-xs font-medium text-gray-600">
+                        {Math.round(deploymentProgress)}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                      <motion.div
+                        className="h-full bg-gray-900 rounded-full"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${deploymentProgress}%` }}
+                        transition={{ duration: 0.5, ease: "easeOut" }}
+                      />
+                    </div>
+                    <div className="text-xs text-gray-500 mt-2 text-center">
+                      {formatTime(estimatedTimeRemaining)} remaining
+                    </div>
+                  </div>
+
+                  {/* Phase Steps */}
+                  <div className="mb-6">
+                    <div className="space-y-3">
+                      {deploymentPhases.map((phase, index) => {
+                        const isActive = deploymentPhase === phase.id;
+                        const isCompleted = 
+                          (phase.id === 'checking' && (deploymentPhase === 'deploying' || deploymentPhase === 'completed')) ||
+                          (phase.id === 'deploying' && deploymentPhase === 'completed');
+                        
+                        return (
+                          <div
+                            key={phase.id}
+                            className={`flex items-center space-x-3 py-2 transition-all duration-300 ${
+                              isActive ? 'opacity-100' : isCompleted ? 'opacity-60' : 'opacity-40'
+                            }`}
+                          >
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
+                              isActive 
+                                ? 'bg-gray-900 text-white' 
+                                : isCompleted 
+                                  ? 'bg-gray-600 text-white'
+                                  : 'bg-gray-300 text-gray-500'
+                            }`}>
+                              {isCompleted ? '✓' : index + 1}
+                            </div>
+                            <div className="flex-1">
+                              <h4 className={`text-sm font-medium ${
+                                isActive ? 'text-gray-900' : 'text-gray-600'
+                              }`}>
+                                {phase.title}
+                              </h4>
+                            </div>
+                            {isActive && (
+                              <div className="w-4 h-4">
+                                <LoadingSpinner size="w-4 h-4" />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Educational Tips */}
+                  <div className="border-t border-gray-100 pt-4">
+                    <motion.div
+                      key={currentTip}
+                      className="text-center"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <h5 className="text-sm font-medium text-gray-900 mb-1">
+                        {deploymentTips[currentTip].title}
+                      </h5>
+                      <p className="text-xs text-gray-600 leading-relaxed">
+                        {deploymentTips[currentTip].content}
+                      </p>
+                    </motion.div>
+                    
+                    {/* Tips Progress */}
+                    <div className="flex justify-center mt-3 space-x-1">
+                      {deploymentTips.map((_, index) => (
+                        <div
+                          key={index}
+                          className={`w-1 h-1 rounded-full transition-all duration-300 ${
+                            index === currentTip ? 'bg-gray-900' : 'bg-gray-300'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Error Handling */}
+                  {deploymentError && (
+                    <motion.div
+                      className="border-t border-gray-100 pt-4 mt-4"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                    >
+                      <div className="text-center">
+                        <div className="text-sm font-medium text-gray-900 mb-2">
+                          Deployment Failed
+                        </div>
+                        <p className="text-xs text-gray-600 mb-4">
+                          {deploymentError.message}
+                        </p>
+                        <div className="flex justify-center space-x-2">
+                          {deploymentError.canRetry && (
+                            <motion.button
+                              onClick={handleRetryDeployment}
+                              className="bg-gray-900 text-white px-4 py-2 rounded-lg text-xs font-medium hover:bg-gray-800 transition-colors"
+                              whileHover={{ scale: 1.02 }}
+                              whileTap={{ scale: 0.98 }}
+                            >
+                              Retry
+                            </motion.button>
+                          )}
+                          <motion.button
+                            onClick={handleCancelDeployment}
+                            className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-xs font-medium hover:bg-gray-300 transition-colors"
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                          >
+                            Cancel
+                          </motion.button>
+                        </div>
                       </div>
-                    ))}
+                    </motion.div>
+                  )}
+
+                  {/* Footer */}
+                  <div className="mt-4 text-center">
+                    <p className="text-xs text-gray-400">
+                      Please don't close this window
+                    </p>
                   </div>
-                  
-                  <div className="text-xs text-gray-500 mt-2 text-center">
-                    {deploymentPhase === 'checking' && 'Verifying if contracts are already deployed...'}
-                    {deploymentPhase === 'deploying' && 'This may take a few moments...'}
-                    {deploymentPhase === 'completed' && 'Redirecting to playground...'}
-                  </div>
-                </div>
+                </motion.div>
               </motion.div>
             )}
 

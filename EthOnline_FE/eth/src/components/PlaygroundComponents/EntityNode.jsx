@@ -9,7 +9,7 @@ const EntityNode = ({ data, isConnectable }) => {
   const executionState = data?.executionState || 'idle';
   
   // Debug logging
-  console.log(`EntityNode ${data?.id} execution state:`, executionState);
+  // console.log(`EntityNode ${data?.id} execution state:`, executionState);
 
   const handleToggle = () => {
     const newIsEth = !isEth;
