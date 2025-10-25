@@ -197,6 +197,7 @@ const PlaygroundSelector = () => {
 
       // Sort nodes by position to get execution order
       const sortedNodes = [...activePlayground.nodes].sort((a, b) => a.position.x - b.position.x);
+      console.log("sortedNodes", sortedNodes);
       const rules = [];
 
       // Sign each transaction/condition sequentially
@@ -315,6 +316,8 @@ const PlaygroundSelector = () => {
             edge.source === node.id
           );
 
+          console.log("connectedEdges", connectedEdges);
+
           // Find true and false target nodes
           for (const edge of connectedEdges) {
             const targetNode = sortedNodes.find(n => n.id === edge.target);
@@ -348,12 +351,12 @@ const PlaygroundSelector = () => {
           const isEthToHbar = nodeData.swapDirection === 'ethToHbar';
           chainName = isEthToHbar ? "eth" : "hbar";
           oappAddr = isEthToHbar ? ethOappAddress : hederaOappAddress;
-          adjustedRuleId = isEthToHbar ? currentRuleId-1 : currentRuleId;
+          adjustedRuleId = isEthToHbar ? currentRuleId: currentRuleId;
         } else {
           // Transaction node
           chainName = nodeData.isEth ? "eth" : "hbar";
           oappAddr = nodeData.isEth ? ethOappAddress : hederaOappAddress;
-          adjustedRuleId = nodeData.isEth ? currentRuleId -1 : currentRuleId;
+          adjustedRuleId = nodeData.isEth ? currentRuleId : currentRuleId;
         }
 
         // Create rule object for API (linking will be set after loop)
@@ -413,7 +416,8 @@ const PlaygroundSelector = () => {
       const apiPayload = {
         rules: rules,
         starting_point: rules.length > 0 ? rules[0].rule_id : 0,
-        userAddress: address
+        userAddress: address,
+        chain: rules[0].chain
       };
 
       // Debug: verify payload before sending

@@ -1,5 +1,5 @@
 // API Service for workflow execution
-const API_BASE_URL = 'https://eth-online.devsonline.in:3000';
+const API_BASE_URL = 'https://eth.devsonline.in:3000';
 
 class WorkflowAPIService {
   async executeRules(payload) {

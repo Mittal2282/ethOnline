@@ -1,4 +1,4 @@
-const BASE_URL = 'https://eth-online.devsonline.in:3000';
+const BASE_URL = 'https://eth.devsonline.in:3000';
 
 class ApiService {
   async request(endpoint, options = {}) {

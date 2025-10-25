@@ -10,6 +10,6 @@ export const BLOCKCHAIN_CONFIG = {
   HEDERA_RPC_URL: "https://testnet.hashio.io/api", // Replace with your actual Hedera RPC URL
   
   // Network IDs
-  ETHEREUM_CHAIN_ID: 11155111, // Sepolia testnet
+  ETHEREUM_CHAIN_ID: 15111151, // Sepolia testnet
   HEDERA_CHAIN_ID: 296, // Hedera testnet
 };
