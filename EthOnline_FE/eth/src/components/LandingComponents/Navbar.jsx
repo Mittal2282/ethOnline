@@ -2,6 +2,7 @@
 import { motion } from "framer-motion";
 import { useAccount, useConnect, useDisconnect, useBalance } from 'wagmi';
 import orbixLogo from "../../../public/OrbixLogo.jpg";
+import orbixLogoPNG from "../../assets/orbixLogo.png";
 
 const Navbar = () => {
   const { address, isConnected } = useAccount();
@@ -68,7 +69,8 @@ const Navbar = () => {
             className="flex items-center"
             variants={itemVariants}
           >
-            <img src={orbixLogo} alt="Orbix Logo" className="h-5" />
+            <img src={orbixLogoPNG} alt="Orbix Logo" className="h-5" />
+            {/* <img src={orbixLogo} alt="Orbix Text" className="h-5" /> */}
           </motion.div>
 
           {/* Right Section - Wallet Connection */}
