@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useWriteContract, useSwitchChain } from 'wagmi';
 import { ethers } from 'ethers';
 import contractABI from '../../data/abi.json';
@@ -31,10 +31,63 @@ const FundingModal = ({
   const [hederaBridgeBalance, setHederaBridgeBalance] = useState('0');
   const [isLoadingBalances, setIsLoadingBalances] = useState(false);
   
+  // Toast state
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  
+  // Track previous tx data to detect new transactions
+  const [prevEthTxData, setPrevEthTxData] = useState(null);
+  const [prevHederaTxData, setPrevHederaTxData] = useState(null);
+  
   const { isConnected, chainId, address } = useAccount();
-  const { writeContract: writeEthContract, isPending: isEthPending } = useWriteContract();
-  const { writeContract: writeHederaContract, isPending: isHederaPending } = useWriteContract();
+  const { writeContract: writeEthContract, isPending: isEthPending, data: ethTxData, error: ethWriteError } = useWriteContract();
+  const { writeContract: writeHederaContract, isPending: isHederaPending, data: hederaTxData, error: hederaWriteError } = useWriteContract();
   const { switchChain } = useSwitchChain();
+
+  // Track transaction success for ETH
+  useEffect(() => {
+    if (ethTxData && ethTxData !== prevEthTxData && isProcessingEth) {
+      setPrevEthTxData(ethTxData);
+      showToast('ETH deposited successfully to contract!', 'success');
+      fetchContractBalances();
+    }
+  }, [ethTxData, prevEthTxData, isProcessingEth]);
+
+  // Track transaction success for Hedera
+  useEffect(() => {
+    if (hederaTxData && hederaTxData !== prevHederaTxData && isProcessingHedera) {
+      setPrevHederaTxData(hederaTxData);
+      showToast('HBAR deposited successfully to contract!', 'success');
+      fetchContractBalances();
+    }
+  }, [hederaTxData, prevHederaTxData, isProcessingHedera]);
+
+  // Track write errors
+  useEffect(() => {
+    if (ethWriteError && isProcessingEth) {
+      showToast(ethWriteError.message || 'Transaction failed', 'error');
+      setIsProcessingEth(false);
+    }
+  }, [ethWriteError, isProcessingEth]);
+
+  useEffect(() => {
+    if (hederaWriteError && isProcessingHedera) {
+      showToast(hederaWriteError.message || 'Transaction failed', 'error');
+      setIsProcessingHedera(false);
+    }
+  }, [hederaWriteError, isProcessingHedera]);
+
+  // Reset processing state when transaction succeeds
+  useEffect(() => {
+    if (ethTxData && ethTxData !== prevEthTxData && isProcessingEth) {
+      setIsProcessingEth(false);
+    }
+  }, [ethTxData, prevEthTxData, isProcessingEth]);
+
+  useEffect(() => {
+    if (hederaTxData && hederaTxData !== prevHederaTxData && isProcessingHedera) {
+      setIsProcessingHedera(false);
+    }
+  }, [hederaTxData, prevHederaTxData, isProcessingHedera]);
 
   const buttonStyles = {
     primary: "flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white rounded-md font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md",
@@ -45,6 +98,23 @@ const FundingModal = ({
   const motionProps = {
     whileHover: { scale: 1.02 },
     whileTap: { scale: 0.98 }
+  };
+
+  // Toast handler
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast({ show: false, message: '', type: 'success' });
+    }, 3000);
+  };
+
+  // Copy to clipboard handler
+  const copyToClipboard = (text, addressType) => {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast(`${addressType} address copied to clipboard`, 'success');
+    }).catch(() => {
+      showToast('Failed to copy address', 'error');
+    });
   };
 
   // Funding functions
@@ -72,15 +142,13 @@ const FundingModal = ({
         ...transactionData,
       });
       
-      // Success - clear the input
+      // Clear the input
       setEthAmount('');
-      alert('ETH deposited successfully to contract!');
-      // Refresh balances
-      await fetchContractBalances();
     } catch (error) {
       console.error('ETH deposit error:', error);
-      setEthError(error.message || 'Failed to deposit ETH to contract');
-    } finally {
+      const errorMessage = error.message || 'Failed to deposit ETH to contract';
+      setEthError(errorMessage);
+      showToast(errorMessage, 'error');
       setIsProcessingEth(false);
     }
   };
@@ -110,15 +178,13 @@ const FundingModal = ({
         ...transactionData,
       });
       
-      // Success - clear the input
+      // Clear the input
       setHederaAmount('');
-      alert('HBAR deposited successfully to contract!');
-      // Refresh balances
-      await fetchContractBalances();
     } catch (error) {
       console.error('Hedera deposit error:', error);
-      setHederaError(error.message || 'Failed to deposit HBAR to contract');
-    } finally {
+      const errorMessage = error.message || 'Failed to deposit HBAR to contract';
+      setHederaError(errorMessage);
+      showToast(errorMessage, 'error');
       setIsProcessingHedera(false);
     }
   };
@@ -150,14 +216,16 @@ const FundingModal = ({
       
       await writeEthContract(contractConfig);
       
-      // Success - clear the input
+      // Clear the input
       setEthBridgeAmount('');
-      alert('ETH bridge funds deposited successfully!');
+      showToast('ETH bridge funds deposited successfully!', 'success');
       // Refresh balances
       await fetchContractBalances();
     } catch (error) {
       console.error('ETH bridge deposit error:', error);
-      setEthBridgeError(error.message || 'Failed to deposit ETH bridge funds');
+      const errorMessage = error.message || 'Failed to deposit ETH bridge funds';
+      setEthBridgeError(errorMessage);
+      showToast(errorMessage, 'error');
     } finally {
       setIsProcessingEthBridge(false);
     }
@@ -192,12 +260,14 @@ const FundingModal = ({
       
       // Success - clear the input
       setHederaBridgeAmount('');
-      alert('HBAR bridge funds deposited successfully!');
+      showToast('HBAR bridge funds deposited successfully!', 'success');
       // Refresh balances
       await fetchContractBalances();
     } catch (error) {
       console.error('Hedera bridge deposit error:', error);
-      setHederaBridgeError(error.message || 'Failed to deposit HBAR bridge funds');
+      const errorMessage = error.message || 'Failed to deposit HBAR bridge funds';
+      setHederaBridgeError(errorMessage);
+      showToast(errorMessage, 'error');
     } finally {
       setIsProcessingHederaBridge(false);
     }
@@ -421,9 +491,24 @@ const FundingModal = ({
                   )}
                 </motion.button>
               </div>
-              <p className="text-xs text-gray-500">
-                To: {ethOappAddress ? `${ethOappAddress.slice(0, 6)}...${ethOappAddress.slice(-4)}` : 'Not available'}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-gray-500">
+                  To: {ethOappAddress ? `${ethOappAddress.slice(0, 6)}...${ethOappAddress.slice(-4)}` : 'Not available'}
+                </p>
+                {ethOappAddress && (
+                  <motion.button
+                    onClick={() => copyToClipboard(ethOappAddress, 'ETH')}
+                    className="p-0.5 hover:bg-gray-100 rounded transition-colors"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    title="Copy address"
+                  >
+                    <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </motion.button>
+                )}
+              </div>
             </div>
 
             {/* Hedera Funding */}
@@ -477,9 +562,24 @@ const FundingModal = ({
                   )}
                 </motion.button>
               </div>
-              <p className="text-xs text-gray-500">
-                To: {hederaOappAddress ? `${hederaOappAddress.slice(0, 6)}...${hederaOappAddress.slice(-4)}` : 'Not available'}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-gray-500">
+                  To: {hederaOappAddress ? `${hederaOappAddress.slice(0, 6)}...${hederaOappAddress.slice(-4)}` : 'Not available'}
+                </p>
+                {hederaOappAddress && (
+                  <motion.button
+                    onClick={() => copyToClipboard(hederaOappAddress, 'HBAR')}
+                    className="p-0.5 hover:bg-gray-100 rounded transition-colors"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    title="Copy address"
+                  >
+                    <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </motion.button>
+                )}
+              </div>
               <p className="text-xs text-blue-600">
                 ℹ️ Wallet will prompt to switch to Hedera Testnet for this transaction
               </p>
@@ -596,6 +696,56 @@ const FundingModal = ({
                 </p>
               </div>
             </div>
+
+            {/* Withdraw Section */}
+            <div className="mt-6 pt-4 border-t border-gray-200">
+              <h4 className="text-base font-medium text-gray-900 mb-4">Withdraw Funds</h4>
+              <div className="grid grid-cols-2 gap-3">
+                {/* ETH Withdraw */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Withdraw ETH
+                  </label>
+                  <motion.button
+                    onClick={() => showToast('Withdraw functionality coming soon', 'info')}
+                    disabled={parseFloat(ethUserBalance) <= 0}
+                    className={`w-full px-3 py-2 rounded-md font-medium text-sm transition-all ${
+                      parseFloat(ethUserBalance) <= 0
+                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'bg-gray-700 hover:bg-gray-800 text-white'
+                    }`}
+                    {...motionProps}
+                  >
+                    Withdraw
+                  </motion.button>
+                  <p className="text-xs text-gray-500">
+                    Balance: {parseFloat(ethUserBalance).toFixed(6)} ETH
+                  </p>
+                </div>
+
+                {/* HBAR Withdraw */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Withdraw HBAR
+                  </label>
+                  <motion.button
+                    onClick={() => showToast('Withdraw functionality coming soon', 'info')}
+                    disabled={parseFloat(hederaUserBalance) <= 0}
+                    className={`w-full px-3 py-2 rounded-md font-medium text-sm transition-all ${
+                      parseFloat(hederaUserBalance) <= 0
+                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'bg-gray-700 hover:bg-gray-800 text-white'
+                    }`}
+                    {...motionProps}
+                  >
+                    Withdraw
+                  </motion.button>
+                  <p className="text-xs text-gray-500">
+                    Balance: {parseFloat(hederaUserBalance).toFixed(6)} HBAR
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         {/* End Scrollable Content */}
@@ -616,6 +766,35 @@ const FundingModal = ({
           </div>
         </div>
       </motion.div>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast.show && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.3 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
+            className={`fixed bottom-20 left-1/2 transform -translate-x-1/2 z-[100] flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg bg-gray-900 text-white border border-gray-700`}
+          >
+            {toast.type === 'success' && (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            {toast.type === 'error' && (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            {toast.type === 'info' && (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            <span className="text-sm font-medium">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

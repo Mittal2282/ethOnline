@@ -91,7 +91,7 @@ const SwappingNode = ({ data, isConnectable }) => {
           {/* Header */}
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-gray-900 text-sm">
-              Swap Node {data?.nodeNumber ? `#${data.nodeNumber}` : ''}
+              Bridge Node {data?.nodeNumber ? `#${data.nodeNumber}` : ''}
             </h3>
             <div className="flex items-center space-x-2">
               {executionState === 'loading' && (
@@ -117,7 +117,7 @@ const SwappingNode = ({ data, isConnectable }) => {
                 </div>
               )}
               <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700">
-                Swap
+                Bridge
               </span>
             </div>
           </div>
@@ -147,7 +147,7 @@ const SwappingNode = ({ data, isConnectable }) => {
           {/* Value Input */}
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
-              Amount to Swap
+              Amount to Bridge
             </label>
             <input
               type="number"

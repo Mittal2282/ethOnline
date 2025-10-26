@@ -212,7 +212,7 @@ const WorkflowControls = ({
                     className={buttonStyles.dropdown}
                   >
                     <div className="w-1.5 h-1.5 bg-amber-400 rounded-full"></div>
-                    Swap
+                    Bridge
                   </button>
                 </div>
               </div>
