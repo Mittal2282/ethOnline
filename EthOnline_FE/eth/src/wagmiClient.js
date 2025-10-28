@@ -34,7 +34,7 @@ export const config = createConfig({
   chains: [sepolia, hederaTestnet],
   connectors: [metaMask()],
   transports: {
-    [sepolia.id]: http('https://eth-sepolia.g.alchemy.com/v2/oIYpahzrgNt5HRj3VtqwTwdYsJyc9ymZ'), // Alchemy Sepolia RPC
+    [sepolia.id]: http('https://eth-sepolia.g.alchemy.com/v2/F3ANEM0KCH5b4R3Dmfsof'), // Alchemy Sepolia RPC
     [hederaTestnet.id]: http('https://testnet.hashio.io/api'), // Hedera Testnet RPC
   },
 });

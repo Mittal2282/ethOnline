@@ -146,7 +146,9 @@ class BlockchainService {
     try {
       // Decide which chain to submit the rule to; default to ETH contract
       // You can enhance this to target a specific chain if needed
-      const contract = this.contract ?? this.contractHedera;
+      const contract = 
+      // this.contract ?? 
+      this.contractHedera;
       if (!contract) {
         throw new Error('No contract instance available. Please deploy/connect contracts first.');
       }

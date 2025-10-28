@@ -343,7 +343,7 @@ const PlaygroundSelector = () => {
         let chainName, oappAddr, adjustedRuleId;
         
         if (node.type === 'conditionalNode' || nodeData.currencyMode) {
-          chainName = "eth";
+          chainName = "hbar";
           oappAddr = ethOappAddress;
           adjustedRuleId = currentRuleId;
         } else if (node.type === 'swappingNode' || nodeData.swapDirection) {

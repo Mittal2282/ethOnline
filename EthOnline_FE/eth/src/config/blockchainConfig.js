@@ -6,7 +6,7 @@ export const BLOCKCHAIN_CONFIG = {
   PRIVATE_KEY: "0x4caa64a8a260e9f6298ed500313ba620c5e9a8bf34de0f9c64482198bce283db",
   
   // RPC URLs
-  RPC_URL: "https://eth-sepolia.g.alchemy.com/v2/oIYpahzrgNt5HRj3VtqwTwdYsJyc9ymZ", // Replace with your actual Ethereum RPC URL
+  RPC_URL: "https://eth-sepolia.g.alchemy.com/v2/F3ANEM0KCH5b4R3Dmfsof", // Replace with your actual Ethereum RPC URL
   HEDERA_RPC_URL: "https://testnet.hashio.io/api", // Replace with your actual Hedera RPC URL
   
   // Network IDs
